@@ -63,21 +63,19 @@ class EccentricCycloidGear:
         self.e = self.r1*self.lambda_
         self.calculate_arc_gear_geometry()
         self.calculate_cycloid_gear_geometry()
-        self.A()
-        self.E()
     
     
     def A(self,**kwargs):
         """
         start point of mesh
         """
-        steps=kwargs.get('steps',250)
+        steps=kwargs.get('steps',1000)
         def Kreis_ra2(t):
             return -sin(t)*self.ra2,cos(t)*self.ra2
         t_range_circle=np.array((pi/(self.z2*4),3/4*pi/self.z2))
         t_range_contact=np.array((-0,-2*pi/self.z2))
         
-        A=find_intersection(Kreis_ra2,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=1,steps=steps,return_t=True)
+        A=find_intersection(Kreis_ra2,self.contact_Point,t_range=t_range_circle,t_range2=t_range_contact,precision=1,steps=steps,return_t=True)
 
 
         if A:
@@ -93,21 +91,20 @@ class EccentricCycloidGear:
         """
         end point of mesh
         """
-        steps=kwargs.get('steps',250)
+        steps=kwargs.get('steps',1000)
         def Kreis_ra1(t):
             return sin(t)*self.ra1,-cos(t)*self.ra1+self.a
         
         t_range_circle=np.array((0,1*pi/self.z2))
         t_range_contact=np.array((-0,-pi/(self.z2*2)))
         
-        E=find_intersection(Kreis_ra1,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=0.5,steps=steps,return_t=True)
+        E=find_intersection(Kreis_ra1,self.contact_Point,t_range=t_range_circle,t_range2=t_range_contact,precision=0.5,steps=steps)
 
         if E:
-            self.zetaE=E[2]
             print(f"Intersection E found at approximately: {E}")
         else:
             print(f"No intersection for E found in the range({t_range_contact*180/pi})")
-        return E[0]
+        return E
     
     def calculate_arc_gear_geometry(self):
         """
@@ -275,6 +272,13 @@ class EccentricCycloidGear:
             y_coords.append(y)
         return tuple(x_coords), tuple(y_coords)
     
+    def xi(self,zeta:float=0):
+        """
+        contact angle ξ
+        """
+        lam=self.lambda_
+        return atan(lam*sin(self.i*zeta)/(1-lam*cos(self.i*zeta)))
+
     def get_cycloid_profile_point(self, zeta: float) -> Tuple[float, float]:
         """
         Calculates a single point on the cycloid profile.
@@ -291,20 +295,37 @@ class EccentricCycloidGear:
         kappa=i*zeta
         xi=self.xi(zeta)
         xy=a*np.array((-sin(zeta),cos(zeta)))-e*np.array((-sin(zeta+kappa),cos(zeta+kappa)))-self.rA*np.array((-sin(-xi+zeta),cos(-xi+zeta)))
+        #x.append(x1)
+        #y.append(y1)
         return xy
+        point(theta)
+        # x = self.rw2 * cos(theta) + self.e * cos(self.i * theta) + self.delta * cos(atan2(
+        #     self.e * self.i * sin(self.i * theta) - self.rw2 * sin(theta),
+        #     self.e * self.i * cos(self.i * theta) - self.rw2 * cos(theta)
+        # ))
+        # y = self.rw2 * sin(theta) + self.e * sin(self.i * theta) + self.delta * sin(atan2(
+        #     self.e * self.i * sin(self.i * theta) - self.rw2 * sin(theta),
+        #     self.e * self.i * cos(self.i * theta) - self.rw2 * cos(theta)
+        # ))
+        return x, y
 
-    def xi(self,zeta:float=0):
+
+
+    def get_arc_profile_point(self, theta: float, phi: float) -> Tuple[float, float]:
         """
-        contact angle ξ
+        Calculates a single point on the arc profile.
+
+        Args:
+            theta (float): Rotation angle of the arc gear.
+            phi (float): Angle parameter for the arc profile.
+
+        Returns:
+            Tuple[float, float]: x and y coordinates of the point on the arc profile.
         """
-        lam=self.lambda_
-        return atan(lam*sin(self.i*zeta)/(1-lam*cos(self.i*zeta)))
+        x = self.e * cos(theta) + self.rA * cos(phi)
+        y = self.e * sin(theta) + self.rA * sin(phi)
+        return x, y
     
-    def alpha_t(self,zeta:float=0):
-        """
-        pressure angle alpha
-        """
-        return pi/2-self.xi(zeta)
 
     def list_parameters(self) -> str:
         """
@@ -337,23 +358,19 @@ class EccentricCycloidGear:
             f"ra1 = {self.ra1:.1f}",
             f"df2 = {self.df2:.1f}"
         ]
-        return "\n".join(params)    
+        return "\n".join(params)
     
-    def p_pOA(self,zeta:float):
-        '''contact point'''
+    
+    def contact_Point(self,zeta:float):
         a=self.a
         xi=self.xi(zeta)
         e=self.e
         x=a*0-e*-sin(self.i*zeta)-self.rA*-sin(-xi)
         y=a*1-e*cos(self.i*zeta)-self.rA*cos(-xi)
-        return np.array((x,y))
-    
-    def p_OA(self,zeta:float):
-        """Punktvektor A"""
-        p_OA=self.a*np.array((-sin(zeta),cos(zeta)))-self.e*np.array(((-sin(zeta+self.i*zeta),cos(zeta+self.i*zeta))))
-        return p_OA
+        return x,y
         
-    def calculate_path_of_contact(self, num_points: int = 1000,**kwargs) -> Tuple[np.ndarray, np.ndarray]:
+
+    def calculate_path_of_contact(self, num_points: int = 100,**kwargs) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculates the path of contact between the arc and cycloid gears using Shapely.
 
@@ -363,10 +380,11 @@ class EccentricCycloidGear:
         Returns:
             Tuple[np.ndarray, np.ndarray]: x and y coordinates of the path of contact.
         """
-        default_start=self.zetaA if self.zetaA else -pi/(self.z1*2)
-        default_end=self.zetaE if self.zetaE else pi/(self.z1*2)
-        start=kwargs.get('start',default_start)
-        end=kwargs.get('end',default_end)
+        start=kwargs.get('start',-pi/(self.z1*2))
+        end=kwargs.get('end',start+pi/self.z1)
+        sector=-2*pi/(self.z1*2)
+        num_points=1000
+        r=pi/self.z1
         e=self.e
         a=self.a
         xp=[]
@@ -379,20 +397,7 @@ class EccentricCycloidGear:
             xp.append(x)
             yp.append(y)
         return xp,yp
-    
-    def v_gear(self,zeta:float,w1:float=1):
-        p_poa=self.p_pOA(zeta)
-        a=self.a
-        v1=w1*np.array((-p_poa[1]+a,p_poa[0]))
-        v2=w1/self.i*np.array((p_poa[1],-p_poa[0]))
-        alpha_t=self.alpha_t(zeta)
-        vg=np.dot(v1-v2,np.array((sin(alpha_t),cos(alpha_t))))
-        vt1=np.dot(v1,np.array((-sin(alpha_t),cos(alpha_t))))
-        vt2=np.dot(v2,np.array((-sin(alpha_t),cos(alpha_t))))
-        vt1_vec=vt1*np.array((-sin(alpha_t),cos(alpha_t)))
-        vt2_vec=vt2*np.array((-sin(alpha_t),cos(alpha_t)))
-        vg=(vt1-vt2)*np.array((-sin(alpha_t),cos(alpha_t)))
-        return v1,vt1_vec,vg
+        
 
     def ShapelyGear(self,**kwargs):
         """
@@ -534,7 +539,6 @@ if __name__ == "__main__":
         z1=3,
         z2=6,
         a=100,
-        c_star=0.1,
         rA_star=1.0,
         st_star=1.0,
         phi_j1=0.0,
@@ -542,35 +546,30 @@ if __name__ == "__main__":
         phi_Ae=170*pi/180,
         lambda_=0.97
     )
-    vs=gear_pair.v_gear(-5*pi/180)
-    for v in vs:
-        print(f"{v}")
-    gear_pair.A()
-    gear_pair.E()
-    zetaA=gear_pair.zetaA
-    zetaE=gear_pair.zetaE
+    parameters_list = gear_pair.list_parameters()
+    print(parameters_list)
+
+
 
     angles=np.linspace(-pi/(gear_pair.z1*2)*0,pi/(gear_pair.z1*2),num=1000)
-    angles=np.linspace(-zetaA,-zetaE,num=1000)
+    angles=np.linspace(gear_pair.phi_tooth/2,-pi/(gear_pair.z1*2),num=1000)
     
-    xis=np.array([(gear_pair.xi(a))*180/pi for a in angles])
-    alphas=np.array([(pi/2-gear_pair.xi(a))*180/pi for a in angles])
     
-    x_coords,y_coords=gear_pair.calculate_path_of_contact(start=zetaA,end=zetaE,num_points=len(angles))
+    alphas=np.array([gear_pair.xi(a)*180/pi for a in angles])
+    
+    x_coords,y_coords=gear_pair.calculate_path_of_contact(len(angles))
     lengths = np.zeros(len(angles))
+    print(f"length of angles={len(angles)} vs length of coords {len(x_coords)}")
     for i in range(1, len(angles)):
         lengths[i] = lengths[i-1] + np.sqrt((x_coords[i] - x_coords[i-1])**2 + (y_coords[i] - y_coords[i-1])**2)
     # Create subplots
     fig, (ax, ax1) = plt.subplots(1, 2)
-    ax.plot(angles*180/pi,xis,c='r',label="ξ")
-    ax.plot(angles*180/pi,alphas,label="α_t")
-    ax.set_xlabel("angle ξ [°]")
+    ax.plot(angles*180/pi,alphas,c='r',label="ξ")
+    ax.plot(angles*180/pi,90-alphas,label="α_t")
     plt.title("Transverse pressure angle[°]")
     ax.legend()
     ax.grid()
-    ax1.plot(lengths,alphas,label="α_t")
+    ax1.plot(lengths,90-alphas,label="α_t")
     ax1.set_xlabel("Path of contact [mm]")
-    ax1.axhline(y=48, color='black', linestyle=':')
-    ax1.axhline(y=27, color='black', linestyle=':')
     ax1.grid()
     plt.show()

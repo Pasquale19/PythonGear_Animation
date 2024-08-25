@@ -216,22 +216,16 @@ def plot_gear_profiles(gear: EccentricCycloidGear):
     """
     # Create the plot
     fig = plt.figure(figsize=(19.2, 10.8), dpi=100)
-    ax = fig.add_subplot(111)
 
-    height_main_plot=gear.a+gear.da1/2+5
-    width=height_main_plot*19.2/10.8
-    width_main_plot=gear.da2+2
+    # Create GridSpec
+    gs = GridSpec(2, 2, width_ratios=[3, 1])
 
-    ax.set_xlim(-width_main_plot/2, -width_main_plot/2+width)
-    lb_y=-5
-    ax.set_ylim(lb_y,lb_y+height_main_plot)
-    margin=0.1
-    width_subPlot=(1-width_main_plot/width-margin)
-    height_subPlot=1/3
-    xleft=width_main_plot/width+margin
-    ax2=ax.inset_axes([xleft,1-(margin+height_subPlot),width_subPlot,height_subPlot])
-    ax3=ax.inset_axes([xleft,margin,width_subPlot,height_subPlot])
-    
+    # Create subplots
+    ax = fig.add_subplot(gs[:, 0])  # Left plot, spans both rows
+    ax2 = fig.add_subplot(gs[0, 1])  # Top right plot
+    ax3 = fig.add_subplot(gs[1, 1])  # Bottom right plot
+
+
     #fig, (ax,ax1) = plt.subplots(1, 2,figsize=(12, 12))
     plotPoints(ax,gear)
     
@@ -285,7 +279,8 @@ def plot_gear_profiles(gear: EccentricCycloidGear):
     #ax.grid(True)
 
     # Set axis limits to ensure both gears are visible
-
+    ax.set_xlim(-gear.ra2 - 1, gear.ra2 + 1)
+    ax.set_ylim(0 - 5, gear.a+gear.da1/2)
 
     # Text for displaying angles
     angle_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, verticalalignment='top')

@@ -63,8 +63,6 @@ class EccentricCycloidGear:
         self.e = self.r1*self.lambda_
         self.calculate_arc_gear_geometry()
         self.calculate_cycloid_gear_geometry()
-        self.A()
-        self.E()
     
     
     def A(self,**kwargs):
@@ -558,6 +556,7 @@ if __name__ == "__main__":
     
     x_coords,y_coords=gear_pair.calculate_path_of_contact(start=zetaA,end=zetaE,num_points=len(angles))
     lengths = np.zeros(len(angles))
+    print(f"length of angles={len(angles)} vs length of coords {len(x_coords)}")
     for i in range(1, len(angles)):
         lengths[i] = lengths[i-1] + np.sqrt((x_coords[i] - x_coords[i-1])**2 + (y_coords[i] - y_coords[i-1])**2)
     # Create subplots

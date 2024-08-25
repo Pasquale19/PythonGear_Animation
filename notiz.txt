@@ -1,0 +1,3 @@
+bei einer Drehung des Antriebes um 90° dreht sich der Abtrieb um 90°/i
+
+e=r2/i
