@@ -63,12 +63,13 @@ class EccentricCycloidGear:
         self.e = self.r1*self.lambda_
         self.calculate_arc_gear_geometry()
         self.calculate_cycloid_gear_geometry()
-        self.calculate_A()
-        self.calculate_E()
+        self.A()
+        self.E()
     
-    def calculate_A(self,**kwargs):
+    
+    def A(self,**kwargs):
         """
-        calculate start point of mesh and set self.A and self.zetaA
+        start point of mesh
         """
         steps=kwargs.get('steps',250)
         def Kreis_ra2(t):
@@ -77,15 +78,18 @@ class EccentricCycloidGear:
         t_range_contact=np.array((-0,-2*pi/self.z2))
         
         A=find_intersection(Kreis_ra2,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=1,steps=steps,return_t=True)
+
+
         if A:
-            self.A=A[0]
             self.zetaA=A[2]
             print(f"zeta A={self.zetaA*180/pi:.1f}")
             print(f"Intersection A found at approximately: {A}")
         else:
             print(f"No intersection for A found in the range({t_range_contact*180/pi})")
-
-    def calculate_E(self,**kwargs):
+        return A[0]
+    
+    #@deprecated(reason="Has error")
+    def E(self,**kwargs):
         """
         end point of mesh
         """
@@ -99,54 +103,11 @@ class EccentricCycloidGear:
         E=find_intersection(Kreis_ra1,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=0.5,steps=steps,return_t=True)
 
         if E:
-            self.E=E[0]
             self.zetaE=E[2]
             print(f"Intersection E found at approximately: {E}")
         else:
             print(f"No intersection for E found in the range({t_range_contact*180/pi})")
         return E[0]
-    
-    # def A(self,**kwargs):
-    #     """
-    #     start point of mesh
-    #     """
-    #     steps=kwargs.get('steps',250)
-    #     def Kreis_ra2(t):
-    #         return -sin(t)*self.ra2,cos(t)*self.ra2
-    #     t_range_circle=np.array((pi/(self.z2*4),3/4*pi/self.z2))
-    #     t_range_contact=np.array((-0,-2*pi/self.z2))
-        
-    #     A=find_intersection(Kreis_ra2,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=1,steps=steps,return_t=True)
-
-
-    #     if A:
-    #         self.zetaA=A[2]
-    #         print(f"zeta A={self.zetaA*180/pi:.1f}")
-    #         print(f"Intersection A found at approximately: {A}")
-    #     else:
-    #         print(f"No intersection for A found in the range({t_range_contact*180/pi})")
-    #     return A[0]
-    
-    # #@deprecated(reason="Has error")
-    # def E(self,**kwargs):
-    #     """
-    #     end point of mesh
-    #     """
-    #     steps=kwargs.get('steps',250)
-    #     def Kreis_ra1(t):
-    #         return sin(t)*self.ra1,-cos(t)*self.ra1+self.a
-        
-    #     t_range_circle=np.array((0,1*pi/self.z2))
-    #     t_range_contact=np.array((-0,-pi/(self.z2*2)))
-        
-    #     E=find_intersection(Kreis_ra1,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=0.5,steps=steps,return_t=True)
-
-    #     if E:
-    #         self.zetaE=E[2]
-    #         print(f"Intersection E found at approximately: {E}")
-    #     else:
-    #         print(f"No intersection for E found in the range({t_range_contact*180/pi})")
-    #     return E[0]
     
     def calculate_arc_gear_geometry(self):
         """
@@ -636,8 +597,8 @@ if __name__ == "__main__":
     vs=gear_pair.v_gear(-5*pi/180)
     for v in vs:
         print(f"{v}")
-    #gear_pair.A()
-    #gear_pair.E()
+    gear_pair.A()
+    gear_pair.E()
     zetaA=gear_pair.zetaA
     zetaE=gear_pair.zetaE
 

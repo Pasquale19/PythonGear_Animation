@@ -25,7 +25,6 @@ class GearMeshingPlot:
         self.ax_pressure_angle = None
         self.ax_sliding_velocity = None
         self.slider = None
-        self.vis_slider=True
         self.angle_text = None
         self.zeta0=gear.zetaA
 
@@ -52,6 +51,8 @@ class GearMeshingPlot:
         self.marker_pressureAngle=None
         self.arc_alpha=None
         self.text_alpha=None
+        self.arc_zeta=None
+        self.text_zeta=None
 
         #grouping elements
         self.group_lines=[self.tangent,self.normal,self.common_tangent,
@@ -120,7 +121,7 @@ class GearMeshingPlot:
             verticalalignment='top',fontsize=16,
             bbox=dict(facecolor='white', edgecolor='white', alpha=1))
         parameter_list:str=f"$z_1$={gear.z1}" "\t\t\t" f"$z_2$={gear.z2}" "\n" f"$r_1$={gear.r1:.2f}" "\t" f"$e$={gear.e:.2f}" "\n$\lambda$" f"={gear.lambda_}""\t\t" r"$\beta$=0°"
-        self.parameter_list=ax.text(0.02, 0.05, parameter_list,transform=ax.transAxes,horizontalalignment='left',
+        self.parameter_list=ax.text(0.01, 0.08, parameter_list,transform=ax.transAxes,horizontalalignment='left',
             verticalalignment='bottom',fontsize=10, animated=False,
             bbox=dict(facecolor='yellow', edgecolor='red', alpha=0.8))
         ax.legend(loc='upper left',bbox_to_anchor=(0.0,1),framealpha=0, prop={'size': 10})
@@ -133,14 +134,14 @@ class GearMeshingPlot:
        
 
     def plotPoints(self,ax,gear,fontsize:int=12,color='black'):
-        A=gear.A
+        A=gear.A(steps=100)
         if A:
             Ax,Ay=A
             ax.annotate('A',(Ax+0.3,Ay+1),color=color, fontsize=fontsize)
             line_A=ax.plot([Ax],[Ay],c=color,label=f"A  start of meshing",marker='o')
         ax.plot([0],[gear.r2],c=color,marker='o',label="C pitch point")
         ax.text(0-0.01,gear.r2-2,'C',c=color, fontsize=fontsize,ha='center',va='top')
-        Ex,Ey=gear.E
+        Ex,Ey=gear.E(steps=100)
         ax.plot([Ex],[Ey],c=color,label=f"E end of meshing",marker='o')
         ax.text(Ex-1,Ey-1.6,'E',c=color, fontsize=fontsize,ha='right',va='top')
 
@@ -246,7 +247,11 @@ class GearMeshingPlot:
         ax.add_patch(self.arc_alpha)
 
         #init zeta
-
+        xy=calculate_arcPolygon(center=(0,0),radius=radius,start_angle=pi/2,end_angle=pi/2+zeta,use_radians=True)
+        self.arc_zeta=Polygon(xy, closed=True,fill="grey",facecolor="grey",edgecolor="black",alpha=0.3)
+        ax.add_patch(self.arc_zeta)
+        xyt=np.array((cos((pi+zeta)/2),sin((pi+zeta)/2)))*radius/2
+        self.text_zeta=ax.annotate("ζ",xy=xyt,xytext=xyt)
 
     def init_force_vector(self,zeta:float,**kwargs):
         #allgemeines verzahnungsgesetz: Kraft muss immer durch den Wälzpunkt verlaufeb
@@ -293,15 +298,15 @@ class GearMeshingPlot:
         self.slider = Slider(ax_slider, 'Rotation', self.gear.zetaA*180/pi, self.gear.zetaE*180/pi, valinit=zeta,valstep=0.5)
         self.slider.on_changed(self.update_plot)
 
-
-
+    def remove_slider(self):
+        if self.slider:
+            #self.slider.remove()
+            print("slider not removed")
     #region update functions
     def update_plot(self, zeta:float):
         artists = []
         zeta=zeta/180*pi
         kappa = zeta * self.gear.i
-        alpha_deg=90+self.gear.xi(zeta)*180/pi
-        alpha_rad=alpha_deg*pi/180
         rotation = Affine2D().rotate_around(0, self.gear.a, kappa)
         self.polyPatch_Gear1.set_transform(rotation + self.ax.transData)
         artists.append(self.polyPatch_Gear1)
@@ -310,25 +315,25 @@ class GearMeshingPlot:
         artists.append(self.polyPatch_Gear2)
 
         # Update contact point
-        p_pOA = self.gear.p_pOA(zeta)
-        self.PC.set_data([p_pOA[0]], [p_pOA[1]])
+        x, y = self.gear.p_pOA(zeta)
+        self.PC.set_data([x], [y])
         artists.append(self.PC)
         #self.PC.set_label(f"C = {zeta * 180 / np.pi:.1f}°")
         #self.angle_text.set_text(f"ζ={zeta * 180 / np.pi:.1f}°")
         artists.append(self.angle_text)
         # Update lines and vectors
-        artists.extend(self.update_lines(zeta,alpha=alpha_rad,p_pOA=p_pOA))
-        artists.extend(self.update_vectors(zeta,alpha=alpha_rad,p_pOA=p_pOA))
-        artists.extend(self.update_pressureAnglePlot(zeta,alpha=alpha_deg))
+        artists.extend(self.update_lines(zeta))
+        artists.extend(self.update_vectors(zeta))
+        artists.extend(self.update_pressureAnglePlot(zeta))
         artists.extend(self.update_SlidingVelocityPlot(zeta))
-        artist_alpha,=self.updateAlpha(alpha=float(alpha_deg))
-        
-        artists.append(artist_alpha)
+        artists.extend(self.updateAngles(zeta))
         #self.fig.savefig(f"export/frame{self.framenumber:06d}.png", format='png', dpi=120)
         self.framenumber+=1
         return artists
     
-    def update_pressureAnglePlot(self,zeta:float, alpha:float): 
+    def update_pressureAnglePlot(self, zeta): 
+        alpha=90+self.gear.xi(zeta)*180/pi
+        #self.gear.alpha_t(zeta)*180/pi
         self.marker_pressureAngle.set_data([zeta*180/pi],[alpha])
         return self.marker_pressureAngle,
 
@@ -337,15 +342,17 @@ class GearMeshingPlot:
         Kg=self.gear.Kg(zeta)
         m.set_data([zeta*180/pi],[Kg])
         return m,
+        #m.set_data()
 
-    def update_vectors(self,zeta:float,alpha:float,p_pOA,**kwargs):
+    def update_vectors(self,zeta:float,**kwargs):
         gear=self.gear
         vt1_arrow,vt2_arrow,vg_arrow=self.vt1_arrow,self.vt2_arrow,self.vg_arrow
         if zeta==0:
             zeta=0.001
         w_length=kwargs.pop('w_length',1)
         vt1,vt2,vg=gear.v_gear(zeta,w_length)
-        xc,yc=p_pOA
+        alpha=gear.alpha_t(zeta)
+        xc,yc=gear.p_pOA(zeta)
 
         if vt1_arrow:
             vt1_arrow.set_data(x=xc-vt1[0],y=yc-vt1[1],dx=vt1[0],dy=vt1[1])
@@ -357,34 +364,48 @@ class GearMeshingPlot:
         #Forces
         M_length=kwargs.pop('M_length',0.5)
         mu=kwargs.pop('mu',0.20)
-        F1_length=M_length/cos(-alpha)*gear.r1
+        F1_length=M_length/cos(alpha)*gear.r1
         Fn_arrow,Fr_arrow=self.Fn_vec,self.Fr_vec
 
         if Fn_arrow:
-            dn=np.array((cos(-alpha),sin(-alpha)))*F1_length
+            dn=np.array((cos(alpha),sin(alpha)))*F1_length
             Fn_arrow.set_data(x=xc-dn[0],y=yc-dn[1],dx=dn[0],dy=dn[1])
         if Fr_arrow:
             unit_vector = -vg / np.linalg.norm(vg)
             dr=unit_vector*abs(F1_length)*mu
+            #dr=-np.array((sin(alpha),-cos(alpha)))*F1_length*mu
             Fr_arrow.set_data(x=xc-dr[0],y=yc-dr[1],dx=dr[0],dy=dr[1])
         d2=-dn-dr
         self.arrow_F2.set_data(x=xc-d2[0],y=yc-d2[1],dx=d2[0],dy=d2[1])
         artists=[self.arrow_F2,self.vg_arrow,self.vt1_arrow,self.vt2_arrow,self.Fn_vec,self.Fr_vec]
         return artists
 
-    def updateAlpha(self,alpha:float):
+    def updateAngles(self,zeta:float):
         angle_alpha=self.arc_alpha
+        alpha=90+self.gear.xi(zeta)*180/pi
         radius=self.angle_radius
         xy=calculate_arcPolygon(center=(0,self.gear.r2),radius=radius,start_angle=0,end_angle=-alpha)
         angle_alpha.set_xy(xy)
-        return angle_alpha,
 
-    def update_lines(self,zeta: float,alpha:float,p_pOA,**kwargs):
+        angle_zeta=self.arc_zeta
+        text_zeta=self.text_zeta
+        start,end=pi/2,pi/2+zeta
+        xy=calculate_arcPolygon(center=(0,0),radius=radius,start_angle=start,end_angle=end,use_radians=True)
+        angle_zeta.set_xy(xy)
+        xyt=np.array((cos(end/2),sin(end/2)))*radius/2
+        text_zeta.set_x(xyt[0])
+        text_zeta.set_y(xyt[0])
+        return [text_zeta,angle_zeta,angle_alpha]
+
+    def update_lines(self,zeta: float,**kwargs):
+        gear=self.gear
+        alpha=gear.alpha_t(zeta)
+        #print(f"alpha={alpha*180/pi:.1f} xi={gear.xi(zeta)*180/pi}°")
         length=kwargs.get("length",90)
-        C=p_pOA
+        C=gear.p_pOA(zeta)
         s_alpha,c_alpha=sin(alpha),cos(alpha)
-        dt=np.array((-s_alpha,-c_alpha))*length*-1
-        dn=np.array((-c_alpha,s_alpha))*length
+        dt=np.array((-s_alpha,c_alpha))*length*-1
+        dn=np.array((c_alpha,s_alpha))*length
         P1_t=C-dt/2
         P1_n=C-dn/2
         
@@ -418,8 +439,6 @@ class GearMeshingPlot:
             self.showLines(vis_v)
         if key=="4":
             self.showAll(False)
-        if key=="3":
-            self.showSlider(not self.vis_slider)
         if key=="z":
             self.zoomIn(1)
         if key=="r":
@@ -451,7 +470,7 @@ class GearMeshingPlot:
         #     lengths[i] = lengths[i-1] + np.sqrt((x_coords[i] - x_coords[i-1])**2 + (y_coords[i] - y_coords[i-1])**2)
         ax.plot(angles*180/pi,alphas,label="α_t",color="black", animated=False)
         ax.set_xlabel("Rotation ζ in °")
-        ax.set_ylabel(r"Pressure angle $\alpha$ in °")
+        ax.set_ylabel(r"Pressure angle $\alpha$ in °]")
         ax.text(0.5,0.9,r"pressure angle $\alpha$",
             horizontalalignment='center', 
             verticalalignment='top', 
@@ -459,20 +478,22 @@ class GearMeshingPlot:
         ax.grid(axis='y')
         # ax.spines['top'].set_visible(False)
         # ax.spines['right'].set_visible(False)
-        #alpha_zeta=gear.alpha_t(zeta)*180/pi
+        alpha_zeta=gear.alpha_t(zeta)*180/pi
 
         
         self.marker_pressureAngle,=ax.plot(angles[0]*180/pi,alphas[0],marker='o',color="black",linestyle="",linewidth=4)
 
-        # y_max=max(alphas)+5
-        # xmin,xmax=min(angles*180/pi),max(angles*180/pi)+3
-        # ax.set_ylim(0,y_max)
-        # ax.set_xlim(xmin,xmax)
-        # arrowprops=dict(head_length=1.5, head_width=1.2, linewidth=1,length_includes_head=True, clip_on=False,color="black")
-        # ax.arrow(x=xmin,y=0,dx=xmax-xmin,dy=0,**arrowprops)
-        # ax.arrow(x=xmin,y=0,dx=0,dy=y_max,**arrowprops)
+        y_max=max(alphas)+5
+        xmin,xmax=min(angles*180/pi),max(angles*180/pi)+3
+        ax.set_ylim(0,y_max)
+        ax.set_xlim(xmin,xmax)
+        arrowprops=dict(head_length=1.5, head_width=1.2, linewidth=1,length_includes_head=True, clip_on=False,color="black")
+        ax.arrow(x=xmin,y=0,dx=xmax-xmin,dy=0,**arrowprops)
+        ax.arrow(x=xmin,y=0,dx=0,dy=y_max,**arrowprops)
         
     def setup_sliding_velocity_plot(self,ax,gear,zeta:float=0,**kwargs):
+        # gear.A()
+        # gear.E()
         zetaA=kwargs.get("start",gear.zetaA)
         zetaE=kwargs.get("end",gear.zetaE)
         angles=np.linspace(zetaA,zetaE,num=400)
@@ -492,6 +513,8 @@ class GearMeshingPlot:
             verticalalignment='top', 
             transform=ax.transAxes)
         ax.grid(axis='y')
+        #ax.spines['top'].set_visible(False)
+        #ax.spines['right'].set_visible(False)
         self.marker_2,=ax.plot(angles[0]*180/pi,Kgs[0],marker='o',color="black",linestyle="",linewidth=4)
     
     #endregion
@@ -504,10 +527,10 @@ class GearMeshingPlot:
     
     def showAll(self,show:bool=False):
         groups=self.get_lines()
-      
+        group2=self.arc_zeta,self.text_zeta
         group_speeds=[ self.vt1_arrow,self.vt2_arrow,self.vg_arrow]
         group_forces=[self.Fn_vec,self.Fr_vec,self.arrow_F2]
-        groups=[*groups,*group_forces,*group_speeds,self.ax_pressure_angle,self.ax_sliding_velocity]
+        groups=[*groups,*group2,*group_forces,*group_speeds,self.ax_pressure_angle,self.ax_sliding_velocity]
         #groups.extend(*self.group_forces,*self.group_speeds,*self.ax_pressure_angle,*self.ax_sliding_velocity)
         for i,item in enumerate(groups):
             item.set_visible(show)
@@ -532,23 +555,12 @@ class GearMeshingPlot:
         group_forces.append(self.ax_sliding_velocity)
         for i,item in enumerate(group_forces):
             item.set_visible(show)
-    
-    def showSlider(self,show:bool=False):
-        self.vis_slider=show
-        if slider:=self.slider:
-            if show:
-                slider.ax.set_position([0.2, 0.05, 0.3, 0.02])
-            else:
-                #slider.valtext.set_visible(False)
-                slider.ax.set_position([0.2, 1.1, 0.3, 0.02])
-            #slider.ax.remove()  # Remove the slider axis from the figure
-            
-        else:
-            return
     #endregion
 
     #region Animation stuff
     def animate(self,val,framenumber=None):
+        zeta=val
+
         start = time.perf_counter()
         self.slider.set_val(val)
         #self.update_plot(val)
@@ -579,15 +591,14 @@ class GearMeshingPlot:
         writervideo = mpl.animation.FFMpegWriter(fps=fps) 
     def Animation1(self,save:bool=False,**kwargs):  
         '''Animation1 full meshing'''
-        print("Animation1 started")
-        self.showSlider()
+        self.remove_slider()
         frames_per_anim=kwargs.get("frames_per_anim",self.frames_per_anim)
         fps=kwargs.get("fps",self.fps)
         self.title.set_text("Eccentric Gear Mesh")
         self.showAll(False)
         angles1=np.linspace(self.slider.valmin+self.slider.valstep,self.slider.valmin*-1,num=frames_per_anim,endpoint=True)
         interval=1000/fps
-        #print(f"interval:{interval} frames={frames_per_anim} fps={fps} duration={frames_per_anim/(60*fps)}min\t len={len(angles1)}")
+        print(f"interval:{interval} frames={frames_per_anim} fps={fps} duration={frames_per_anim/(60*fps)}min\t len={len(angles1)}")
         anim=FuncAnimation(self.fig,self.update_plot,interval=interval,frames=angles1,repeat=False)
         if save:
             writervideo = mpl.animation.FFMpegWriter(fps=fps)
@@ -613,13 +624,10 @@ class GearMeshingPlot:
 
     def Animation2(self,save:bool=False,**kwargs):  
         '''Animation2 lines and pressure angle Plot'''
-        print("Animation2 started")
         frames_per_anim=kwargs.get("frames_per_anim",self.frames_per_anim)
         fps=kwargs.get("fps",self.fps)
         self.showAll(False)
         self.showLines(True)
-        self.showForces(False)
-        self.showSpeeds(False)
         self.ax_sliding_velocity.set_visible(False)
         angles=np.linspace(self.slider.valmin+self.slider.valstep*0,self.slider.valmax,num=frames_per_anim)
         anim=FuncAnimation(self.fig,self.update_plot,interval=1000/fps,frames=angles,repeat=False)
@@ -629,17 +637,15 @@ class GearMeshingPlot:
             print("animation2.mp4 saved")
     def Animation3(self,save:bool=False,**kwargs):  
         '''Animation3 sliding velocity $v_g$'''
-        print("Animation3 started")
-        self.showSlider()
+        self.remove_slider()
         frames_per_anim=kwargs.get("frames_per_anim",self.frames_per_anim)
         fps=kwargs.get("fps",self.fps)
         angles=np.linspace(self.slider.valmin+self.slider.valstep*0,self.slider.valmax,num=frames_per_anim)
         self.title.set_text("sliding velocity $v_g$")
         self.showLines(False)
-        self.showForces(False)
         self.showSpeeds(True)
         self.zoomIn(1)
-        anim=FuncAnimation(self.fig,self.update_plot,interval=1000/fps,frames=angles,repeat=False)
+        anim=FuncAnimation(self.fig,self.update_plot,interval=500,frames=angles,repeat=False)
         if save:
             writervideo = mpl.animation.FFMpegWriter(fps=fps)
             anim.save('animation3.mp4', writer=writervideo)
@@ -647,23 +653,20 @@ class GearMeshingPlot:
 
     def Animation4(self,save:bool=False,**kwargs):  
         '''Animation4 forces'''
-        print("Animation4 started")
-        self.showSlider()
+        self.remove_slider()
         frames_per_anim=kwargs.get("frames_per_anim",self.frames_per_anim)
         fps=kwargs.get("fps",self.fps)
         angles=np.linspace(self.slider.valmin+self.slider.valstep*0,self.slider.valmax,num=frames_per_anim)
         self.title.set_text("Forces")
-        
         self.showLines(False)
         self.showSpeeds(False)
         self.showForces(True)
-        self.ax_pressure_angle.set_visible(True)
         self.ax_sliding_velocity.set_visible(False)
         self.zoomIn(1)
-        anim=FuncAnimation(self.fig,self.update_plot,interval=1000/fps,frames=angles,repeat=False)
+        anim=FuncAnimation(self.fig,self.update_plot,interval=500,frames=angles,repeat=False)
         if save:
             writervideo = mpl.animation.FFMpegWriter(fps=fps)
-            anim.save('animation4.mp4', writer=writervideo)
+            anim.save('animation3.mp4', writer=writervideo)
             print("animation4.mp4 saved")
     #endregion
 
