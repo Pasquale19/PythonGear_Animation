@@ -3,9 +3,11 @@ from math import pi, cos, sin, acos, atan2, sqrt,atan,asin
 from typing import Tuple, Dict
 import numpy as np
 from matplotlib import pyplot as plt
+import matplotlib.patches as patches
 from shapely.geometry import Point, Polygon
 from shapely import affinity as affinity
 from intersection import find_intersection
+from Utilities.Converter import convert_to_rack
 #from deprecated import deprecated
 
 @dataclass
@@ -65,6 +67,10 @@ class EccentricCycloidGear:
         self.calculate_cycloid_gear_geometry()
         self.calculate_A()
         self.calculate_E()
+        phi_As=self.phi_As
+        A_start=np.array((sin(0), -cos(0))) * self.e + np.array((-sin(phi_As), cos(phi_As))) * self.rA
+        self.rInter=np.hypot(A_start[0],A_start[1])
+        
     
     def calculate_A(self,**kwargs):
         """
@@ -106,47 +112,7 @@ class EccentricCycloidGear:
             print(f"No intersection for E found in the range({t_range_contact*180/pi})")
         return E[0]
     
-    # def A(self,**kwargs):
-    #     """
-    #     start point of mesh
-    #     """
-    #     steps=kwargs.get('steps',250)
-    #     def Kreis_ra2(t):
-    #         return -sin(t)*self.ra2,cos(t)*self.ra2
-    #     t_range_circle=np.array((pi/(self.z2*4),3/4*pi/self.z2))
-    #     t_range_contact=np.array((-0,-2*pi/self.z2))
-        
-    #     A=find_intersection(Kreis_ra2,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=1,steps=steps,return_t=True)
 
-
-    #     if A:
-    #         self.zetaA=A[2]
-    #         print(f"zeta A={self.zetaA*180/pi:.1f}")
-    #         print(f"Intersection A found at approximately: {A}")
-    #     else:
-    #         print(f"No intersection for A found in the range({t_range_contact*180/pi})")
-    #     return A[0]
-    
-    # #@deprecated(reason="Has error")
-    # def E(self,**kwargs):
-    #     """
-    #     end point of mesh
-    #     """
-    #     steps=kwargs.get('steps',250)
-    #     def Kreis_ra1(t):
-    #         return sin(t)*self.ra1,-cos(t)*self.ra1+self.a
-        
-    #     t_range_circle=np.array((0,1*pi/self.z2))
-    #     t_range_contact=np.array((-0,-pi/(self.z2*2)))
-        
-    #     E=find_intersection(Kreis_ra1,self.p_pOA,t_range=t_range_circle,t_range2=t_range_contact,precision=0.5,steps=steps,return_t=True)
-
-    #     if E:
-    #         self.zetaE=E[2]
-    #         print(f"Intersection E found at approximately: {E}")
-    #     else:
-    #         print(f"No intersection for E found in the range({t_range_contact*180/pi})")
-    #     return E[0]
     
     def calculate_arc_gear_geometry(self):
         """
@@ -161,7 +127,7 @@ class EccentricCycloidGear:
         self.phi_s1 = self.phi_rA  + self.phi_j1
         self.phi_tooth=pi/(self.z1)*self.st_star #angle of one tooth
         
-        #phne Backlash phi_j1
+        #phne Backlash phi_j1 funktioniert nicht
         q_F1 = e * sin(self.phi_As) / sin(pi -(pi/self.z1) -self.phi_As-self.phi_rA/2)
         self.rF1 = sqrt(q_F1**2 + self.e**2 - 2 * q_F1 * self.e * cos(pi/self.z1+self.phi_rA/2)) - self.rA
         #mit Backlash phi_j1
@@ -169,7 +135,7 @@ class EccentricCycloidGear:
         self.rF1 = sqrt(q_F1**2 + self.e**2 - 2 * q_F1 * self.e * cos(pi/self.z1+self.phi_s1/2)) - self.rA
 
 
-        self.q_F1=q_F1
+        self.qF1=q_F1
         self.df1 = 2 * (q_F1 - self.rF1)
         self.rf1 = self.df1 / 2
         self.da1 = 2 * (self.e - self.rA * cos(self.phi_Ae))
@@ -187,9 +153,36 @@ class EccentricCycloidGear:
         self.da2 = 2 * (self.a - self.rf1-self.c)
         self.ra2 = self.da2 / 2
 
-    def get_arc_profile(self,rotation_angle=0, num_points: int = 100,full_gear:bool=True) -> Tuple[Tuple[float, ...], Tuple[float, ...]]:
+    def calculateRequired_rF1(self,**kwargs):
+        num=kwargs.get("num",1000)
+        angle=pi/self.z1+self.zetaA*self.i
+        F10=np.array((0,self.a))+np.array((sin(angle),-cos(angle)))*self.qF1
+        K0=self.p_pOA(self.zetaA)
+        angles=np.linspace(self.zetaA,self.zetaE,num=num,endpoint=False)
+        angles2=-self.zetaA+angles
+        angles1=angles2*self.i
+        from Utilities.rotatePoint import rotate_point
+        F1s=rotate_point(F10,angles1,center=(0,self.a),use_radians=True)
+        Ks=rotate_point(K0,-angles2,center=(0,0),use_radians=True)
+        ax=kwargs.get("ax",False)
+        distance=-F1s+Ks
+        d=np.hypot(distance[:,0],distance[:,1])
+        if ax:
+            ax.plot(F1s[:,0],F1s[:,1],label="F1s",marker='o')
+            for i, p in enumerate(F1s):
+                c_F1=patches.Circle(p,radius=self.rF1,fill=False,color=(1/num*i,1/num*i,1/num*i),linestyle=":",alpha=1)
+                ax.add_patch(c_F1)
+            for i,di in enumerate(d):
+                print(f"distance is {di:.2f} vs rF1 {self.rF1:.2f}")
+            ax.plot(Ks[:,0],Ks[:,1],label="Ks",marker='o')
+            #ax.plot(d[:,0],d[:,1],label="d")
+        rF1_required=max(d)
+        print(f"current rF1={self.rF1:.2f} vs needed {rF1_required:.2f} ")
+
+
+    def get_arc_profile(self,rotation_angle=0, num_points: int = 100,full_gear:bool=True,**kwargs) -> Tuple[Tuple[float, ...], Tuple[float, ...]]:
         """
-        Generates the profile of the arc gear.
+        Generates the profile of the arc gear with mathematical formulas
 
         Args:
             num_points (int): Number of points to generate for the profile.
@@ -204,7 +197,9 @@ class EccentricCycloidGear:
         phi_As=self.phi_As
         phi_Ae=self.phi_Ae
         angles_rightFlank=np.linspace(phi_As,phi_Ae,num=int(num_points/4))
-        phi_s1=self.phi_s1
+        phi_s1=kwargs.get("phi_s1",self.phi_s1)
+        center_x=kwargs.get("center_x",0)
+        center_y=kwargs.get("center_y",self.a)
         #right_flank
         for a in angles_rightFlank:
             theta=rotation_angle-phi_s1/2 #winkel des rihtungsvektors
@@ -230,7 +225,7 @@ class EccentricCycloidGear:
         for a in angles_foot:
             theta=rotation_angle-pi/self.z1 #winkel des rihtungsvektors
             a2=-a+theta
-            x,y=np.array((sin(theta),-cos(theta)))*self.q_F1+np.array((0,self.a))+np.array((-sin(a2),cos(a2)))*self.rF1
+            x,y=np.array((sin(theta),-cos(theta)))*self.qF1+np.array((0,self.a))+np.array((-sin(a2),cos(a2)))*self.rF1
             x_coords.append(x)
             y_coords.append(y)
         #return x_coords, y_coords
@@ -247,24 +242,28 @@ class EccentricCycloidGear:
             #xy_gear=np.append(xy_gear,rotated_points,axis=None)
         xy_gear=np.vstack(empty_list)
         if full_gear:
-            return xy_gear[:,0],xy_gear[:,1]+self.a
+            return xy_gear[:,0]+center_x,xy_gear[:,1]+center_y
         else:
-            return x_coords, y_coords
+            return x_coords+center_x, y_coords+center_y
         
     
         #left_foot
 
 
 
-    def get_arc_profile2(self, rotation_angle: float = 0, num_points: int = 100, full_gear: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    def get_arc_profile2(self, rotation_angle: float = 0, num_points: int = 100, full_gear: bool = True,**kwargs) -> Tuple[np.ndarray, np.ndarray]:
+        '''faster method to calculate the profile of the first gear'''
         phi_As, phi_Ae = self.phi_As, self.phi_Ae
         angles_right_flank = np.linspace(phi_As, phi_Ae, num=max(1, num_points // 4))
-        phi_s1 = self.phi_s1
-
+        phi_s1=kwargs.get("phi_s1",self.phi_s1)
+        center_x=kwargs.get("center_x",0)
+        center_y=kwargs.get("center_y",self.a)
+        #print(f"{phi_s1=}")
         def calculate_coords(angle: float, theta: float) -> Tuple[float, float]:
             a2 = -angle + theta
             return np.array((sin(theta), -cos(theta))) * self.e + np.array((0, self.a)) + np.array((-sin(a2), cos(a2))) * self.rA
 
+        
         # Right flank
         coords = [calculate_coords(a, rotation_angle - phi_s1 / 2) for a in angles_right_flank]
 
@@ -276,15 +275,17 @@ class EccentricCycloidGear:
 
         # Left foot
         phi_Fs = pi - pi / self.z1 - phi_As
-        angles_foot = np.linspace(phi_Fs, -phi_Fs, num=max(1, num_points // 2), endpoint=False)
+        num=max(1, num_points // 2)
+        step=(2*phi_Fs)/(num)
+        angles_foot = np.linspace(phi_Fs-step, -phi_Fs, num=num, endpoint=False)
         theta = rotation_angle - pi / self.z1
-        coords.extend(np.array((np.sin(theta), -np.cos(theta))) * self.q_F1 + np.array((0, self.a)) + 
+        coords.extend(np.array((np.sin(theta), -np.cos(theta))) * self.qF1 + np.array((0, self.a)) + 
                     np.array((-np.sin(-a + theta), np.cos(-a + theta))) * self.rF1 for a in angles_foot)
 
         xy = np.array(coords).T - np.array([[0], [self.a]])
        
         if not full_gear:
-            return xy[0] , xy[1]+ self.a
+            return xy[0]+center_x , xy[1]+ center_y
 
         rotation_matrices = [
             np.array([[np.cos(angle), -np.sin(angle)],
@@ -293,7 +294,130 @@ class EccentricCycloidGear:
         ]
 
         xy_gear = np.vstack([xy.T @ matrix for matrix in rotation_matrices])
-        return xy_gear[:, 0], xy_gear[:, 1] + self.a
+        return xy_gear[:, 0]+center_x, xy_gear[:, 1] + center_y
+
+
+    def get_arc_profile3(self, rotation_angle: float = 0, num_points: int = 100, full_gear: bool = True,**kwargs) -> Tuple[np.ndarray, np.ndarray]:
+        '''faster method to calculate the profile of the first gear'''
+        phi_As, phi_Ae = self.phi_As, self.phi_Ae
+        angles_right_flank = np.linspace(phi_As, phi_Ae, num=max(1, num_points // 4))
+        phi_s1=kwargs.get("phi_s1",self.phi_s1)
+        center_x=kwargs.get("center_x",0)
+        center_y=kwargs.get("center_y",self.a)
+        #print(f"{phi_s1=}")
+        def calculate_coords(angle: float, theta: float) -> Tuple[float, float]:
+            a2 = -angle + theta
+            return np.array((sin(theta), -cos(theta))) * self.e + np.array((0, self.a)) + np.array((-sin(a2), cos(a2))) * self.rA
+        phi_Fs = pi - pi / self.z1 - phi_As
+        num=max(1, num_points // 2)
+        angles_footl = np.linspace(0, -phi_Fs, num=num, endpoint=False)
+        theta2 = rotation_angle + pi / self.z1
+        coords2=[np.array((np.sin(theta2), -np.cos(theta2))) * self.qF1 + np.array((0, self.a)) + 
+                    np.array((-np.sin(-a + theta2), np.cos(-a + theta2))) * self.rF1 for a in angles_footl]
+
+        coords=coords2
+        
+        # Right flank
+        coords.extend(calculate_coords(a, rotation_angle - phi_s1 / 2) for a in angles_right_flank)
+
+        # Top point
+        coords.append(np.array((sin(rotation_angle), -cos(rotation_angle))) * self.ra1 + np.array((0, self.a)))
+
+        # Left flank
+        coords.extend(calculate_coords(-a, rotation_angle + phi_s1 / 2) for a in reversed(angles_right_flank))
+
+        # Left foot
+        
+        
+        step=(2*phi_Fs)/(num)
+        angles_foot = np.linspace(phi_Fs-step, -0, num=num, endpoint=False)
+        theta = rotation_angle - pi / self.z1
+        coords.extend(np.array((np.sin(theta), -np.cos(theta))) * self.qF1 + np.array((0, self.a)) + 
+                    np.array((-np.sin(-a + theta), np.cos(-a + theta))) * self.rF1 for a in angles_foot)
+        
+        
+
+        xy = np.array(coords).T - np.array([[0], [self.a]])
+       
+        if not full_gear:
+            return xy[0]+center_x , xy[1]+ center_y
+
+        rotation_matrices = [
+            np.array([[np.cos(angle), -np.sin(angle)],
+                    [np.sin(angle), np.cos(angle)]])
+            for angle in np.linspace(0, 2 * np.pi, self.z1, endpoint=False)
+        ]
+
+        xy_gear = np.vstack([xy.T @ matrix for matrix in rotation_matrices])
+        return xy_gear[:, 0]+center_x, xy_gear[:, 1] + center_y
+
+    def get_rackProfile(self,num=1000):
+        
+        x,y=self.get_arc_profile2(rotation_angle=pi,num_points=num,full_gear=True)
+        xn,yn=convert_to_rack(x,y,self.r1,center_x=0,center_y=self.a)
+        return xn,yn
+    
+    def calculateFlankParameter(self,num_points:int=1000,epsilon=0.0001):
+        x,y=self.get_rackProfile(num=num_points)
+        arr=np.zeros(shape=(3,num_points-1))
+        p0=np.array((x[0],y[0]))
+        for i in range(1,num_points,1):
+            p1=np.array((x[i],y[i]))
+            d=p0-p1
+            d=d/np.linalg.norm(d)
+            alpha=np.arctan2(d[1],d[0])
+            arr[1,i-1]=alpha
+            n=(0-p1[1])/cos(alpha)
+            if round(abs(alpha)-pi/2,4)==0:
+                print(f"{p1=}")
+            if p1[1]**2<epsilon:
+                xr=p1[0]
+                print(f"smaller epsilon {p1[1]=}")
+            else:
+                xr=p1[0]+n*-sin(alpha)
+            phi=xr/self.r1
+            arr[0,i-1]=phi
+            #arr[0,i-1]=xr
+            arr[2,i-1]=n
+            print(f"phi={phi*180/pi:.1f}°\t xr={xr:.1f}\t alpha={alpha*180/pi:.5f} \t n={n:.1f}")
+            p0=p1
+        return arr
+    
+    def plotFlankParameter(self):
+        from Utilities.Converter import calculateFlankParameter
+        xr,yr=self.get_rackProfile(num=num_points)
+        plt.rcParams['lines.markersize'] = 1
+        num_points=100
+        arr=self.calculateFlankParameter(num_points=num_points)
+        
+        
+        xg,yg=self.get_arc_profile2(rotation_angle=pi,num_points=num_points,full_gear=False)
+        xr,yr=convert_to_rack(xg,yg,self.r1,center_x=0,center_y=self.a)
+        alpha=arr[1,:]
+        n=arr[2,:]
+        x=arr[0,:]
+        fig,(ax1,ax2)=plt.subplots(2)
+        
+        ax1.set_aspect("equal")
+        c=patches.Circle(xy=(0,0),radius=self.r1,label="r1",fill=False,linestyle=":")
+        ax1.add_patch(c)
+        ax1.hlines(0,xmin=-30,xmax=30)
+        ax1.grid()
+        scatter = ax1.scatter(xr, yr, c=range(len(xr)), cmap='viridis',label="rack")
+        plt.colorbar(scatter,label='index')
+        #ax1.plot(xr,yr,label=r"$rack$")
+        ax1.scatter(xg, yg-self.a, c=range(len(xg)), cmap='viridis',label="gear")
+        #ax1.plot(xg,yg-self.a,label=r"$gear$")
+        ax1.legend()
+        ax2.scatter(x, n, c=range(len(n)), cmap='viridis',label="n")
+        #ax2.plot(x,n,label="n")
+        ax2.scatter(x, alpha*180/pi, c=range(len(x)), cmap='viridis',label=r"$\alpha$")
+        #ax2.plot(x,alpha*180/pi,label=)
+        ax2.legend()
+        
+        plt.show()
+
+            
 
     def get_cycloid_profile(self, num_points: int = 100) -> Tuple[Tuple[float, ...], Tuple[float, ...]]:
         """
@@ -319,7 +443,7 @@ class EccentricCycloidGear:
     
     def get_cycloid_profile_point(self, zeta: float) -> Tuple[float, float]:
         """
-        Calculates a single point on the cycloid profile.
+        p_pC Calculates a single point on the cycloid profile p_pC
 
         Args:
             theta (float): Angle parameter for the cycloid curve.
@@ -327,6 +451,7 @@ class EccentricCycloidGear:
         Returns:
             Tuple[float, float]: x and y coordinates of the point on the cycloid profile.
         """
+      
         a=self.a
         e=self.e
         i=self.i
@@ -360,7 +485,7 @@ class EccentricCycloidGear:
             f"d1 = {self.d1:.1f}",
             f"r1 = {self.r1:.1f}",
             f"e = {self.e:.1f}",
-            f"qF1 = {self.q_F1:.1f}",
+            f"qF1 = {self.qF1:.1f}",
             f"rw1 = {self.rw1:.1f}",
             f"rw2 = {self.rw2:.1f}",
             f"rA_star = {self.rA_star:.1f}",
@@ -466,7 +591,8 @@ class EccentricCycloidGear:
         vt1_vec=vt1*np.array((-sin(alpha_t),cos(alpha_t)))
         vt2_vec=vt2*np.array((-sin(alpha_t),cos(alpha_t)))
         vg=(vt1-vt2)*np.array((-sin(alpha_t),cos(alpha_t)))
-        return vt1_vec,vt2_vec,vg
+       
+        return vt1_vec,vt2_vec,-vg
 
     def Kg(self,zeta:float):
         p_poa=self.p_pOA(zeta)
@@ -499,13 +625,10 @@ class EccentricCycloidGear:
 
         Returns:
         shapely.geometry.Polygon: Polygon representing the gear
-        """
-        c=kwargs.get('r',self.r1)
-        
+        """       
         r=z=kwargs.get('r',self.r1)
         z=kwargs.get('z',self.z1)
-        m=2*r/z
-        c=m*kwargs.get('c',0.1)
+        #m=2*r/z
         da=self.da1
         center_x=kwargs.get('center_x',0)
         center_y=kwargs.get('center_y',0)
@@ -521,13 +644,14 @@ class EccentricCycloidGear:
         yp = [e * np.sin(angle) + center_y for angle in angles]
 
         #gear=Point(0,0).buffer(r_circle)
-        gear=Point(center_x,center_y).buffer(e)
+        gear=Point(center_x,center_y).buffer(e*0.9)
+        print("Startkreis zu groß")
         angles_foot=[a+pi/z for a in angles]
         rF=self.rF1
-        qF1=self.q_F1
+        qF1=self.qF1
         
         
-        
+        #erstellen der Zahnköpfe
         for a in angles:
             a1=a-self.phi_s1
             circle_a=Point(cos(a1)*e+center_x,sin(a1)*e+center_y).buffer(rA)
@@ -536,7 +660,7 @@ class EccentricCycloidGear:
             circle_a=Point(cos(a2)*e+center_x,sin(a2)*e+center_y).buffer(rA)
             gear=gear.union(circle_a)
         
-        
+        #erstellen der Zahnfüße
         for a in angles_foot:
             circle_f=Point(cos(a)*qF1+center_x,sin(a)*qF1+center_y).buffer(rF)
             gear=gear.difference(circle_f)
@@ -597,7 +721,7 @@ class EccentricCycloidGear:
         center_y (float): Y-coordinate of the gear center (default is 0)
         sector (tuple): Sector of the gear to be considered (default is (pi/2, 2*pi+pi/2))
         Rr (float): Radius of the tooth arc (default is r*sin(pi/(z*2)))
-
+        num (int): number of points to calculate default=6000
         Returns:
         shapely.geometry.Polygon: Polygon representing the gear
         """
@@ -612,15 +736,98 @@ class EccentricCycloidGear:
 
         base=Point(0,0).buffer(self.ra2)
         cutter=Polygon(list(zip(x_coords,y_coords)))
+        
+        #return cutter
         angles=np.linspace(0,2*pi,num=int(self.z2),endpoint=False)        
         for theta in angles:
             cutter2=affinity.rotate(cutter,angle=theta,origin=(0,0),use_radians=True)
             base=base.difference(cutter2)
         return base
 
+    def ShapelyCycloidal3(self,**kwargs):
+        """
+        Calculates the polygon of a gear with arc-shaped teeth.
+
+        Parameters:
+        r (float): Pitch radius of the gear
+        z (int): Number of teethqF1
+        center_x (float): X-coordinate of the gear center (default is 0)
+        center_y (float): Y-coordinate of the gear center (default is 0)
+        sector (tuple): Sector of the gear to be considered (default is (pi/2, 2*pi+pi/2))
+        Rr (float): Radius of the tooth arc (default is r*sin(pi/(z*2)))
+        num (int): number of points to calculate default=6000
+        Returns:
+        shapely.geometry.Polygon: Polygon representing the gear
+        """
+        num=kwargs.get("num",6000)
+        ax=kwargs.get("ax",False)
+        theta_range = np.linspace(-1.3*pi/self.z2, 1.3*pi/self.z2, num=num//self.z2,endpoint=False)
+        x_coords = [0]
+        y_coords = [self.a]
+        for theta in theta_range:
+            x, y = self.get_cycloid_profile_point(theta)
+            x_coords.append(x)
+            y_coords.append(y)
+
+        base=Point(0,0).buffer(self.ra2)
+        cutter=Polygon(list(zip(x_coords,y_coords)))
+        
+        #return cutter
+        angles=np.linspace(0,2*pi,num=int(self.z2),endpoint=False)        
+        for theta in angles:
+            cutter2=affinity.rotate(cutter,angle=theta,origin=(0,0),use_radians=True)
+            #base=base.difference(cutter2)
+        
+        arc_x, arc_y = self.get_arc_profile2(rotation_angle=0, num_points=1000, full_gear=True,phi_s1=0,center_x=0,center_y=0)
+        cutter=Polygon(list(zip(arc_x, arc_y )))
+        angles=np.linspace(0,2*pi,num=num,endpoint=False)
+        a=self.a 
+        for theta in angles:
+            rotation=theta*(1+self.i)
+            cutter2=affinity.rotate(cutter,angle=rotation,origin=(0,0),use_radians=True)
+            x,y=np.array((-sin(theta),cos(theta)))*a
+            cutter2=affinity.translate(cutter2,xoff=x,yoff=y)
+            base=base.difference(cutter2)
+        if ax:
+            ax.plot(arc_x,arc_y,label="cuter")
+            x,y=cutter2.exterior.xy
+            ax.plot(x,y,label="cuter trans")
+        return base
+
+    def ShapelyCycloidal(self,**kwargs):
+        """
+        Calculates the polygon of a gear with arc-shaped teeth.
+
+        Parameters:
+        r (float): Pitch radius of the gear
+        z (int): Number of teethqF1
+        center_x (float): X-coordinate of the gear center (default is 0)
+        center_y (float): Y-coordinate of the gear center (default is 0)
+        sector (tuple): Sector of the gear to be considered (default is (pi/2, 2*pi+pi/2))
+        Rr (float): Radius of the tooth arc (default is r*sin(pi/(z*2)))
+
+        Returns:
+        shapely.geometry.Polygon: Polygon representing the gear
+        """
+        ra2=self.ra2
+        a=self.a
+        base=Point(0,0).buffer(ra2)
+        
+        x1,y1=self.get_arc_profile2(0)
+        cutter=Polygon(list(zip(x1,y1)))
+        cutter=affinity.translate(cutter,xoff=0,yoff=-a)
+        num_points=z=kwargs.get('num_points',360)
+        angles=np.linspace(0,2*pi,num=num_points,endpoint=False)        
+        for theta in angles:
+            rotation_angle=theta+theta*self.i
+            cutter2=affinity.rotate(cutter,angle=rotation_angle,origin=(0,0),use_radians=True)
+            cutter2=affinity.translate(cutter2,xoff=-sin(theta)*a,yoff=cos(theta)*a)
+            base=base.difference(cutter2)
+        return base
     
 if __name__ == "__main__":
     # Create an instance of EccentricCycloidGear
+    from HideOnClick2 import hideOnClick
     gear_pair = EccentricCycloidGear(
         z1=3,
         z2=6,
@@ -633,35 +840,42 @@ if __name__ == "__main__":
         phi_Ae=170*pi/180,
         lambda_=0.97
     )
-    vs=gear_pair.v_gear(-5*pi/180)
-    for v in vs:
-        print(f"{v}")
-    #gear_pair.A()
-    #gear_pair.E()
-    zetaA=gear_pair.zetaA
-    zetaE=gear_pair.zetaE
-
-    angles=np.linspace(-pi/(gear_pair.z1*2)*0,pi/(gear_pair.z1*2),num=1000)
-    angles=np.linspace(-zetaA,-zetaE,num=1000)
     
-    xis=np.array([(gear_pair.xi(a))*180/pi for a in angles])
-    alphas=np.array([(pi/2-gear_pair.xi(a))*180/pi for a in angles])
     
-    x_coords,y_coords=gear_pair.calculate_path_of_contact(start=zetaA,end=zetaE,num_points=len(angles))
-    lengths = np.zeros(len(angles))
-    for i in range(1, len(angles)):
-        lengths[i] = lengths[i-1] + np.sqrt((x_coords[i] - x_coords[i-1])**2 + (y_coords[i] - y_coords[i-1])**2)
-    # Create subplots
     fig, (ax, ax1) = plt.subplots(1, 2)
-    ax.plot(angles*180/pi,xis,c='r',label="ξ")
-    ax.plot(angles*180/pi,alphas,label="α_t")
-    ax.set_xlabel("angle ξ [°]")
-    plt.title("Transverse pressure angle[°]")
-    ax.legend()
-    ax.grid()
-    ax1.plot(lengths,alphas,label="α_t")
-    ax1.set_xlabel("Path of contact [mm]")
-    ax1.axhline(y=48, color='black', linestyle=':')
-    ax1.axhline(y=27, color='black', linestyle=':')
-    ax1.grid()
+    ax.set_aspect("equal")
+    gear_pair.rF1=16.4
+    gear_pair.calculateRequired_rF1(ax=ax,num=10)
     plt.show()
+    # vs=gear_pair.v_gear(-5*pi/180)
+    # for v in vs:
+    #     print(f"{v}")
+    # #gear_pair.A()
+    # #gear_pair.E()
+    # zetaA=gear_pair.zetaA
+    # zetaE=gear_pair.zetaE
+
+    # angles=np.linspace(-pi/(gear_pair.z1*2)*0,pi/(gear_pair.z1*2),num=1000)
+    # angles=np.linspace(-zetaA,-zetaE,num=1000)
+    
+    # xis=np.array([(gear_pair.xi(a))*180/pi for a in angles])
+    # alphas=np.array([(pi/2-gear_pair.xi(a))*180/pi for a in angles])
+    
+    # x_coords,y_coords=gear_pair.calculate_path_of_contact(start=zetaA,end=zetaE,num_points=len(angles))
+    # lengths = np.zeros(len(angles))
+    # for i in range(1, len(angles)):
+    #     lengths[i] = lengths[i-1] + np.sqrt((x_coords[i] - x_coords[i-1])**2 + (y_coords[i] - y_coords[i-1])**2)
+    # # Create subplots
+    # 
+    # ax.plot(angles*180/pi,xis,c='r',label="ξ")
+    # ax.plot(angles*180/pi,alphas,label="α_t")
+    # ax.set_xlabel("angle ξ [°]")
+    # plt.title("Transverse pressure angle[°]")
+    # ax.legend()
+    # ax.grid()
+    # ax1.plot(lengths,alphas,label="α_t")
+    # ax1.set_xlabel("Path of contact [mm]")
+    # ax1.axhline(y=48, color='black', linestyle=':')
+    # ax1.axhline(y=27, color='black', linestyle=':')
+    # ax1.grid()
+    # plt.show()

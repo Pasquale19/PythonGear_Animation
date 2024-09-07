@@ -50,8 +50,12 @@ class GearMeshingPlot:
         self.p_poa1 = None
         self.marker_2=None
         self.marker_pressureAngle=None
+        self.text_pressureAngle=None
         self.arc_alpha=None
         self.text_alpha=None
+
+        self.circle_F1=None
+        self.marker_K=None
 
         #grouping elements
         self.group_lines=[self.tangent,self.normal,self.common_tangent,
@@ -60,6 +64,7 @@ class GearMeshingPlot:
         self.group_speeds=[ self.vt1_arrow,self.vt2_arrow,self.vg_arrow]
 
         #style elements
+        self.limits0=None
         self.arrowprops=dict(head_length=1.5, head_width=1.2, lw=1,length_includes_head=True)
         self.angle_radius=25
 
@@ -68,7 +73,7 @@ class GearMeshingPlot:
         self.frames_per_anim=100
         self.fps=24
         self.framenumber=0
-        self.setup_plot()
+        #self.setup_plot()
 
     def setup_plot(self):
         # Create figure and subplots
@@ -97,12 +102,13 @@ class GearMeshingPlot:
         zeta0=self.zeta0
         # Initial plot configuration
         self.plotPoints(ax=self.ax,gear=self.gear)
+        self.setup_slider()
         self.plot_initial_gear_profiles()
         self.setup_pressure_angle_plot(ax=self.ax_pressure_angle,gear=self.gear,zeta=zeta0)
         self.setup_sliding_velocity_plot(ax=self.ax_sliding_velocity,gear=self.gear,zeta=zeta0)
-        self.setup_slider()
+        
         self.init_angle(zeta0)
-
+        #self.plotExtras()
         # Connect event handlers
         self.fig.canvas.mpl_connect('key_press_event', self.key_press)
 
@@ -119,18 +125,55 @@ class GearMeshingPlot:
         self.title=ax.text((width_main_plot/2)/width, 1, 'Eccentric Cycloid Gear',transform=ax.transAxes,horizontalalignment='center',
             verticalalignment='top',fontsize=16,
             bbox=dict(facecolor='white', edgecolor='white', alpha=1))
-        parameter_list:str=f"$z_1$={gear.z1}" "\t\t\t" f"$z_2$={gear.z2}" "\n" f"$r_1$={gear.r1:.2f}" "\t" f"$e$={gear.e:.2f}" "\n$\lambda$" f"={gear.lambda_}""\t\t" r"$\beta$=0°"
+        parameter_list:str=f"$z_1$={gear.z1}" "\t\t" f"$z_2$={gear.z2}" "\n" f"$r_1$={gear.r1:.2f}" "\t" f"$e$={gear.e:.2f}" "\n" r"s$\lambda$" f"={gear.lambda_}""\t\t" r"$\beta$=0°" "\n" r"$\varphi_{j1}$" f"={gear.phi_j1*180/pi:.1f}°" "\t" "$c*$" f"={gear.c_star:.1f}"
         self.parameter_list=ax.text(0.02, 0.05, parameter_list,transform=ax.transAxes,horizontalalignment='left',
             verticalalignment='bottom',fontsize=10, animated=False,
             bbox=dict(facecolor='yellow', edgecolor='red', alpha=0.8))
         ax.legend(loc='upper left',bbox_to_anchor=(0.0,1),framealpha=0, prop={'size': 10})
-        
+        hideOnClick(self.fig,self.ax)
         #self.createAnimation(frames_per_anim=10,fps=1)
         
         
         plt.show()
         #plt.close()
-       
+    
+    def plotExtras(self):
+        angle=pi/self.gear.z1+self.gear.zetaA*self.gear.i
+        F10=np.array((0,self.gear.a))+np.array((sin(angle),-cos(angle)))*self.gear.qF1
+        self._F10=F10
+        print(f"F10={F10}")
+        self.circle_F1=Circle(F10,radius=self.gear.rF1,linestyle=":",edgecolor="blue",facecolor="none",linewidth=2,alpha=1,label="F1")
+        self.ax.add_patch(self.circle_F1)
+
+        K0=self.gear.p_pOA(self.gear.zetaA)
+        self._K0=K0
+        self.marker_K,=self.ax.plot([K0[0]],[K0[1]],c="yellow",label=f"head",marker='o')
+        self.slider.on_changed(self.updateExtras)
+
+
+    def updateExtras(self,zeta:float):
+        """zeta in rad"""
+        zeta=zeta*pi/180
+        from Utilities.rotatePoint import rotate_point
+        rotation_angle2=zeta-self.gear.zetaA
+        kappa=rotation_angle2*self.gear.i
+        #kappa=zeta*self.gear.i
+        #print(f"updateExtras {zeta*180/pi:.2f}°")
+        rotation = Affine2D().rotate_around(0, self.gear.a, kappa)
+        rotation2 = Affine2D().rotate_around(0, 0, -rotation_angle2)
+
+        F1s=rotate_point(self._F10,kappa,center=(0,self.gear.a),use_radians=True)
+        Ks=rotate_point(self._K0,-rotation_angle2,center=(0,0),use_radians=True)
+        distance=-F1s+Ks
+        dist=np.hypot(distance[0],distance[1])
+        self.circle_F1.center=F1s[0],F1s[1]
+        self.marker_K.set_data([Ks[0]],[Ks[1]])
+        # self.circle_F1.set_transform(rotation + self.ax.transData)
+        # self.marker_K.set_transform(rotation2 + self.ax.transData)
+        info:str=f"K with distance {dist:.2f} vs rF1={self.gear.rF1:.2f}"
+        print(info)
+        self.marker_K.set_label(info)
+        self.title.set_text(info)
 
     def plotPoints(self,ax,gear,fontsize:int=12,color='black'):
         A=gear.A
@@ -165,9 +208,10 @@ class GearMeshingPlot:
         # Plot reference circles
         r2_circle = Circle((0, 0), self.gear.r2, linestyle='-.', color='g', fill=False)
         r1_circle = Circle((0, self.gear.a), self.gear.r1, linestyle='-.', color='b', fill=False)
+        rInter_circle = Circle((0, self.gear.a), self.gear.rInter, linestyle='-.', color='m', fill=False,label="$r_{inter}$"f"={self.gear.rInter:.2f}")
         da1_circle = Circle((0, self.gear.a), self.gear.da1 / 2, linestyle=':', color='b', fill=False)
         da2_circle = Circle((0, 0), self.gear.ra2, linestyle=':', color='g', fill=False)
-        for circle in [r2_circle, r1_circle, da1_circle, da2_circle]:
+        for circle in [r2_circle, r1_circle, da1_circle, da2_circle,rInter_circle]:
             self.ax.add_patch(circle)
 
     def plot_gear_polygons(self):
@@ -185,7 +229,8 @@ class GearMeshingPlot:
         self.ax.add_patch(self.polyPatch_Gear1)
 
         # Plot Gear2
-        cycloidal_gear2 = self.gear.ShapelyCycloidal2()
+        cycloidal_gear2 = self.gear.ShapelyCycloidal2(ax=self.ax)
+        #cycloidal_gear2 = self.gear.ShapelyCycloidal3(ax=self.ax)
         cycloid_x, cycloid_y = cycloidal_gear2.exterior.xy
         self.polyPatch_Gear2 = mpl.patches.Polygon(list(zip(cycloid_x, cycloid_y)), facecolor='lightgreen',
                                                    edgecolor='g', linestyle='-', alpha=0.5, linewidth=2)
@@ -322,7 +367,7 @@ class GearMeshingPlot:
         artists.extend(self.update_pressureAnglePlot(zeta,alpha=alpha_deg))
         artists.extend(self.update_SlidingVelocityPlot(zeta))
         artist_alpha,=self.updateAlpha(alpha=float(alpha_deg))
-        
+        #self.updateExtras(zeta)
         artists.append(artist_alpha)
         #self.fig.savefig(f"export/frame{self.framenumber:06d}.png", format='png', dpi=120)
         self.framenumber+=1
@@ -330,6 +375,7 @@ class GearMeshingPlot:
     
     def update_pressureAnglePlot(self,zeta:float, alpha:float): 
         self.marker_pressureAngle.set_data([zeta*180/pi],[alpha])
+        self.text_pressureAngle.set_text(r"pressure angle  $\alpha$" f"={alpha:.1f}°")
         return self.marker_pressureAngle,
 
     def update_SlidingVelocityPlot(self, zeta):
@@ -452,7 +498,7 @@ class GearMeshingPlot:
         ax.plot(angles*180/pi,alphas,label="α_t",color="black", animated=False)
         ax.set_xlabel("Rotation ζ in °")
         ax.set_ylabel(r"Pressure angle $\alpha$ in °")
-        ax.text(0.5,0.9,r"pressure angle $\alpha$",
+        self.text_pressureAngle=ax.text(0.5,0.9,r"pressure angle $\alpha$",
             horizontalalignment='center', 
             verticalalignment='top', 
             transform=ax.transAxes)
@@ -675,8 +721,22 @@ if __name__ == "__main__":
         rA_star=1.0,
         st_star=1.0,
         phi_j1=0.1*pi/180,
-        phi_As=60*pi/180,
+        phi_As=49*pi/180,
         phi_Ae=170*pi/180,
-        lambda_=0.97
+        lambda_=0.97,
+        c_star=0.125
     )
+    # gear_pair = EccentricCycloidGear(
+    #     z1=3,
+    #     z2=6,
+    #     a=100,
+    #     rA_star=1.0,
+    #     st_star=1.0,
+    #     phi_j1=1*pi/180,
+    #     phi_As=60*pi/180,
+    #     phi_Ae=170*pi/180,
+    #     lambda_=0.999
+    # )
     gear_meshing_plot = GearMeshingPlot(gear_pair)
+    #gear_meshing_plot.gear.rF1=16.1
+    gear_meshing_plot.setup_plot()

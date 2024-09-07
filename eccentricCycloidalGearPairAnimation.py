@@ -30,14 +30,14 @@ def plotReferenceCircle(ax,gear):
 
 
 def plotPoints(ax,gear,fontsize:int=12,color='black'):
-    A=gear.A(steps=100)
+    A=gear.A
     if A:
         Ax,Ay=A
         ax.annotate('A',(Ax+0.3,Ay+1),color=color, fontsize=fontsize)
         line_A=ax.plot([Ax],[Ay],c=color,label=f"A  $ζ={gear.zetaA*180/pi:.1f}$",marker='o')
     ax.plot([0],[gear.r2],c=color,label="C",marker='o')
     ax.text(0-0.01,gear.r2-2,'C',c=color, fontsize=fontsize,ha='center',va='top')
-    Ex,Ey=gear.E(steps=100)
+    Ex,Ey=gear.E
     ax.plot([Ex],[Ey],c=color,label=f"E  $ζ={gear.zetaE*180/pi:.1f}$",marker='o')
     ax.text(Ex-1,Ey-1.6,'E',c=color, fontsize=fontsize,ha='right',va='top')
 
@@ -231,7 +231,8 @@ def plot_gear_profiles(gear: EccentricCycloidGear):
     xleft=width_main_plot/width+margin
     ax2=ax.inset_axes([xleft,1-(margin+height_subPlot),width_subPlot,height_subPlot])
     ax3=ax.inset_axes([xleft,margin,width_subPlot,height_subPlot])
-    
+    for a in (ax2,ax3):
+        a.set_visible(False)
     #fig, (ax,ax1) = plt.subplots(1, 2,figsize=(12, 12))
     plotPoints(ax,gear)
     
@@ -241,24 +242,29 @@ def plot_gear_profiles(gear: EccentricCycloidGear):
     #initial_rotation=14.7*180/pi*1/gear.i*0
     zeta=gear.zetaA
     kappa=gear.i*zeta+initial_rotation
-    setupPressureAnglePlot(ax2,gear,zeta)
-    setupSlidingVelocityPlot(ax3,gear,zeta)
+    #setupPressureAnglePlot(ax2,gear,zeta)
+    #setupSlidingVelocityPlot(ax3,gear,zeta)
     
     # Gear1
     arc_x, arc_y = gear.get_arc_profile(rotation_angle=kappa*0,num_points=1000,full_gear=True)
-    polyPatch_Gear1=mpl.patches.Polygon(list(zip(arc_x, arc_y)),facecolor='lightblue',edgecolor='b',linestyle='-',alpha=0.5,linewidth=2)
+    
+    polyPatch_Gear1=mpl.patches.Polygon(list(zip(arc_x, arc_y)),facecolor='lightblue',edgecolor='b',linestyle='-',alpha=0.5,linewidth=2,label="gear1")
     rotation = Affine2D().rotate_around(0, gear.a, kappa)
     polyPatch_Gear1.set_transform(rotation + ax.transData)
     ax.add_patch(polyPatch_Gear1)
+    arc_x,arc_y=gear.ShapelyGear().exterior.xy
+    line_Gear1,=ax.plot(arc_x, arc_y,color="blue",linestyle='-',alpha=0.5,linewidth=2,marker='o',label="linegear1",markersize=1)
+    line_Gear1.set_transform(rotation + ax.transData)
 
     # Plot cycloid gear profile
-    cycloidal_gear2=gear.ShapelyCycloidal2()
+    cycloidal_gear2=gear.ShapelyCycloidal2(num=10000)
     cycloid_x,cycloid_y=cycloidal_gear2.exterior.xy
-    polyPatch_Gear2=mpl.patches.Polygon(list(zip(cycloid_x, cycloid_y)),facecolor='lightgreen',edgecolor='g',linestyle='-',alpha=0.5,linewidth=2)
+    polyPatch_Gear2=mpl.patches.Polygon(list(zip(cycloid_x, cycloid_y)),facecolor='lightgreen',edgecolor='g',linestyle='-',alpha=0.5,linewidth=2,label="gear2")
     ax.add_patch(polyPatch_Gear2)
     rotation2 = Affine2D().rotate_around(0, 0, -zeta)
     polyPatch_Gear2.set_transform(rotation2 + ax.transData)
-    
+    line_Gear2,=ax.plot(cycloid_x,cycloid_y,color='green',linestyle='-',alpha=0.5,linewidth=2,marker='o',label="linegear2",markersize=1)
+    line_Gear2.set_transform(rotation2 + ax.transData)
     # Get path of contact
     contact_x, contact_y = gear.calculate_path_of_contact(num_points=1000)
     ax.plot(contact_x, contact_y, color='black',linestyle='-', label='Path of Contact')
@@ -280,8 +286,7 @@ def plot_gear_profiles(gear: EccentricCycloidGear):
     ax.set_aspect('equal', 'box')
     ax.set_title('Eccentric Cycloid Gear Pair')
     
-    ax.legend(loc='upper right',bbox_to_anchor=(0.2,1), fontsize=8)
-    #ax.legend(loc='upper left',bbox_to_anchor=(1,1), prop={'size': 6})
+    ax.legend(loc='upper right',bbox_to_anchor=(1,1), prop={'size': 6})
     #ax.grid(True)
 
     # Set axis limits to ensure both gears are visible
@@ -300,9 +305,11 @@ def plot_gear_profiles(gear: EccentricCycloidGear):
         kappa=zeta*gear.i
         rotation = Affine2D().rotate_around(0, gear.a, kappa)
         polyPatch_Gear1.set_transform(rotation + ax.transData)
+        line_Gear1.set_transform(rotation + ax.transData)
         #set gear 2
         rotation2 = Affine2D().rotate_around(0, 0, -zeta)
         polyPatch_Gear2.set_transform(rotation2 + ax.transData)
+        line_Gear2.set_transform(rotation2 + ax.transData)
         #Kontaktpunkt
         x,y=gear.p_pOA(zeta)
         PC.set_data([x],[y])
@@ -318,7 +325,6 @@ def plot_gear_profiles(gear: EccentricCycloidGear):
         p_poa=gear.p_pOA(zeta)
         p_poa_arrow.set_data(x=0,y=0,dx=p_poa[0],dy=p_poa[1])
         p_poa1.set_data([0,p_poa[0]],[gear.a,p_poa[1]])
-        ax.legend()
 
 
     def invertVisibility(event):
@@ -349,7 +355,7 @@ if __name__ == "__main__":
         a=100,
         rA_star=1.0,
         st_star=1.0,
-        phi_j1=1.0*pi/180,
+        phi_j1=0.1*pi/180,
         phi_As=60*pi/180,
         phi_Ae=170*pi/180,
         lambda_=0.97

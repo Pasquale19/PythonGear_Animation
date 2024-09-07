@@ -1,0 +1,4 @@
+file 'D:\100_Nextcloud\400_Programmierung\PythonGear_Animation\animation1.mp4'
+file 'D:\100_Nextcloud\400_Programmierung\PythonGear_Animation\animation2.mp4'
+file 'D:\100_Nextcloud\400_Programmierung\PythonGear_Animation\animation3.mp4'
+file 'D:\100_Nextcloud\400_Programmierung\PythonGear_Animation\animation4.mp4'
