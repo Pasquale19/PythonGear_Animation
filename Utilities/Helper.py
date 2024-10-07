@@ -8,7 +8,7 @@ def calculate_arc(center, radius, start_angle, end_angle, num_points=100):
     return x, y
 
 
-def calculate_arcPolygon(center, radius, start_angle, end_angle, num_points=100,use_radians=False):
+def calculate_arcPolygon(center, radius, start_angle, end_angle, num_points=100,use_radians=False,includeCenter=True):
     '''Calculates the coordinates of an arc, the angles must be defined in degrees'''
     # Convert angles from degrees to radians
     if use_radians:
@@ -20,6 +20,7 @@ def calculate_arcPolygon(center, radius, start_angle, end_angle, num_points=100,
     xy = np.array(center) + np.array([np.cos(theta), np.sin(theta)]).T * radius
     
     # Append the center point as the last point
-    xy = np.vstack([xy, center])
+    if includeCenter:
+        xy = np.vstack([xy, center])
     
     return xy
